@@ -1,4 +1,5 @@
 # OpenBMC webserver
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sivaprabug/bmcweb)
 
 This component attempts to be a "do everything" embedded webserver for OpenBMC.
 
