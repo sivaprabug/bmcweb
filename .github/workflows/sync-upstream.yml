@@ -1,0 +1,30 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes
+  workflow_dispatch:        # allow manual run
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream
+        run: |
+          git remote add upstream https://github.com/openbmc/bmcweb.git
+          git fetch upstream
+
+      - name: Sync master branch
+        run: |
+          git checkout master
+          git merge upstream/master --no-edit
+
+      - name: Push changes
+        run: |
+          git push origin master
