@@ -92,7 +92,9 @@ void Subscription::sendHeartbeatEvent()
 {
     // send the heartbeat message
     nlohmann::json eventMessage = messages::redfishServiceFunctional();
-    eventMessage["EventTimestamp"] = time_utils::getDateTimeOffsetNow().first;
+    eventMessage["EventTimestamp"] =
+        time_utils::getDateTimeOffsetNow(redfish::time_utils::DateFormat::UTC)
+            .first;
     eventMessage["OriginOfCondition"] = boost::urls::format(
         "/redfish/v1/EventService/Subscriptions/{}", userSub->id);
     eventMessage["MemberId"] = "0";
@@ -218,8 +220,10 @@ void Subscription::filterAndSendEventLogs(
 
         if (!eventMatchesFilter(*userSub, bmcLogEntry, ""))
         {
-            BMCWEB_LOG_DEBUG("Event {} did not match the filter",
-                             nlohmann::json(bmcLogEntry).dump());
+            nlohmann::json jsonEntry = bmcLogEntry;
+            std::string strEntry = jsonEntry.dump(
+                -1, ' ', true, nlohmann::json::error_handler_t::replace);
+            BMCWEB_LOG_DEBUG("Event {} did not match the filter", strEntry);
             continue;
         }
 

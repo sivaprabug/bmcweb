@@ -87,7 +87,8 @@ inline void handleSystemsLogServicesPostCodesGet(
         BMCWEB_REDFISH_SYSTEM_URI_NAME);
 
     std::pair<std::string, std::string> redfishDateTimeOffset =
-        redfish::time_utils::getDateTimeOffsetNow();
+        redfish::time_utils::getDateTimeOffsetNow(
+            redfish::time_utils::DateFormat::UTC);
     asyncResp->res.jsonValue["DateTime"] = redfishDateTimeOffset.first;
     asyncResp->res.jsonValue["DateTimeLocalOffset"] =
         redfishDateTimeOffset.second;
@@ -581,8 +582,7 @@ inline void handleSystemsLogServicesPostCodesEntriesEntryAdditionalDataGet(
 
             asyncResp->res.addHeader(boost::beast::http::field::content_type,
                                      "application/octet-stream");
-            asyncResp->res.addHeader(
-                boost::beast::http::field::content_transfer_encoding, "Base64");
+            asyncResp->res.addHeader("Content-Transfer-Encoding", "Base64");
             asyncResp->res.write(crow::utility::base64encode(strData));
         },
         "xyz.openbmc_project.State.Boot.PostCode0",
