@@ -68,7 +68,6 @@ incdir = [
 
 # Add compiler arguments
 boost_flags = ['-Wno-pedantic']
-nghttp2_flags = []
 if (cxx.get_id() == 'clang')
     if (cxx.version().version_compare('<17.0'))
         error('This project requires clang-17 or higher')
@@ -111,7 +110,6 @@ if (cxx.get_id() == 'clang')
     endif
 
     boost_flags += ['-Wno-strict-prototypes', '-Wno-unused-but-set-variable']
-    nghttp2_flags += ['-Wno-extra-semi']
 endif
 
 if (cxx.get_id() == 'gcc')
@@ -145,13 +143,11 @@ if (get_option('buildtype') != 'plain')
         # dynamic symbol table entries
 
         add_project_arguments(
-            cxx.get_supported_arguments(
-                [
-                    '-fno-fat-lto-objects',
-                    '-fvisibility=hidden',
-                    '-fvisibility-inlines-hidden',
-                ],
-            ),
+            [
+                '-fno-fat-lto-objects',
+                '-fvisibility=hidden',
+                '-fvisibility-inlines-hidden',
+            ],
             language: 'cpp',
         )
 
@@ -175,88 +171,72 @@ security_flags = [
 plain = get_option('buildtype') == 'plain'
 debug = get_option('buildtype').startswith('debug')
 if not (plain or debug)
-    add_project_arguments(
-        cxx.get_supported_arguments([security_flags]),
-        language: 'cpp',
-    )
+    add_project_arguments(security_flags, language: 'cpp')
 endif
 
 # Boost dependency configuration
 
 add_project_arguments(
-    cxx.get_supported_arguments(
-        [
-            '-DBOOST_ALL_NO_LIB',
-            '-DBOOST_ALLOW_DEPRECATED_HEADERS',
-            '-DBOOST_ASIO_DISABLE_THREADS',
-            '-DBOOST_ASIO_NO_DEPRECATED',
-            '-DBOOST_ASIO_SEPARATE_COMPILATION',
-            '-DBOOST_BEAST_SEPARATE_COMPILATION',
-            '-DBOOST_EXCEPTION_DISABLE',
-            '-DBOOST_NO_EXCEPTIONS',
-            '-DBOOST_URL_NO_SOURCE_LOCATION',
-            '-DBOOST_SPIRIT_X3_NO_RTTI',
-            '-DJSON_NOEXCEPTION',
-            '-DJSON_NO_IO',
-            '-DJSON_USE_IMPLICIT_CONVERSIONS=0',
-            '-DOPENSSL_NO_FILENAMES',
-            '-DSDBUSPLUS_DISABLE_BOOST_COROUTINES',
-        ],
-    ),
+    [
+        '-DBOOST_ALL_NO_LIB',
+        '-DBOOST_ALLOW_DEPRECATED_HEADERS',
+        '-DBOOST_ASIO_DISABLE_THREADS',
+        '-DBOOST_ASIO_NO_DEPRECATED',
+        '-DBOOST_ASIO_SEPARATE_COMPILATION',
+        '-DBOOST_BEAST_SEPARATE_COMPILATION',
+        '-DBOOST_EXCEPTION_DISABLE',
+        '-DBOOST_NO_EXCEPTIONS',
+        '-DBOOST_URL_NO_SOURCE_LOCATION',
+        '-DBOOST_SPIRIT_X3_NO_RTTI',
+        '-DJSON_NOEXCEPTION',
+        '-DJSON_NO_IO',
+        '-DJSON_USE_IMPLICIT_CONVERSIONS=0',
+        '-DOPENSSL_NO_FILENAMES',
+        '-DSDBUSPLUS_DISABLE_BOOST_COROUTINES',
+    ],
     language: 'cpp',
 )
 
 # Find the dependency modules, if not found use meson wrap to get them
 # automatically during the configure step
-bmcweb_dependencies = []
+bmcweb_dependencies = [
+    cxx.find_library('pam'),
+    cxx.find_library('atomic'),
+]
 
-pam = cxx.find_library('pam', required: true)
-atomic = cxx.find_library('atomic', required: true)
-bmcweb_dependencies += [pam, atomic]
-
-openssl = dependency('openssl', required: false, version: '>=3.0.0')
-if not openssl.found()
-    openssl_proj = subproject(
-        'openssl',
-        required: true,
-        default_options: ['warning_level=0', 'werror=false'],
-    )
-    openssl = openssl_proj.get_variable('openssl_dep')
-    openssl = openssl.as_system('system')
-endif
-bmcweb_dependencies += [openssl]
+openssl = dependency(
+    'openssl',
+    version: '>=3.0.0',
+    include_type: 'system',
+    default_options: ['warning_level=0', 'werror=false'],
+)
+bmcweb_dependencies += openssl
 
 zstd = dependency('libzstd', required: get_option('http-zstd').allowed())
 if zstd.found()
     add_project_arguments('-DHAVE_ZSTD', language: 'cpp')
-    bmcweb_dependencies += [zstd]
+    bmcweb_dependencies += zstd
 endif
-nghttp2 = dependency('libnghttp2', version: '>=1.52.0', required: false)
+
+nghttp2 = dependency('libnghttp2', version: '>=1.66.0', required: false)
 if not nghttp2.found()
     cmake = import('cmake')
     opt_var = cmake.subproject_options()
     opt_var.add_cmake_defines(
         {
-            'CMAKE_C_FLAGS': ' '.join(nghttp2_flags),
-            'CMAKE_CXX_FLAGS': ' '.join(nghttp2_flags),
             'ENABLE_LIB_ONLY': true,
-            'ENABLE_STATIC_LIB': true,
+            'BUILD_STATIC_LIBS': true,
         },
     )
     nghttp2_ex = cmake.subproject('nghttp2', options: opt_var)
-    nghttp2 = nghttp2_ex.dependency('nghttp2')
+    nghttp2 = nghttp2_ex.dependency('nghttp2_static')
 endif
 bmcweb_dependencies += nghttp2
 
 sdbusplus = dependency('sdbusplus')
 bmcweb_dependencies += sdbusplus
 
-cli11 = dependency('CLI11', required: false, include_type: 'system')
-if not cli11.found()
-    cli11_proj = subproject('cli11', required: true)
-    cli11 = cli11_proj.get_variable('CLI11_dep')
-    cli11 = cli11.as_system('system')
-endif
+cli11 = dependency('CLI11', include_type: 'system')
 bmcweb_dependencies += cli11
 
 tinyxml = dependency(
@@ -265,11 +245,6 @@ tinyxml = dependency(
     version: '>=9.0.0',
     default_options: ['tests=false'],
 )
-if not tinyxml.found()
-    tinyxml_proj = subproject('tinyxml2', required: true)
-    tinyxml = tinyxml_proj.get_variable('tinyxml_dep')
-    tinyxml = tinyxml.as_system('system')
-endif
 bmcweb_dependencies += tinyxml
 
 systemd = dependency('systemd')
@@ -372,6 +347,7 @@ srcfiles_bmcweb = files(
     'redfish-core/src/filter_expr_executor.cpp',
     'redfish-core/src/filter_expr_printer.cpp',
     'redfish-core/src/heartbeat_messages.cpp',
+    'redfish-core/src/journal_read_state.cpp',
     'redfish-core/src/redfish.cpp',
     'redfish-core/src/registries.cpp',
     'redfish-core/src/resource_messages.cpp',
