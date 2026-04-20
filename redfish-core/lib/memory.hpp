@@ -20,6 +20,7 @@
 #include "utils/dbus_utils.hpp"
 #include "utils/hex_utils.hpp"
 #include "utils/json_utils.hpp"
+#include "utils/time_utils.hpp"
 
 #include <asm-generic/errno.h>
 
@@ -436,6 +437,7 @@ inline void assembleDimmProperties(
     const std::string* model = nullptr;
     const std::string* locationCode = nullptr;
     const bool* functional = nullptr;
+    const std::string* buildDate = nullptr;
 
     const bool success = sdbusplus::unpackPropertiesNoThrow(
         dbus_utils::UnpackErrorPrinter(), properties, "MemoryDataWidth",
@@ -448,7 +450,8 @@ inline void assembleDimmProperties(
         memoryConfiguredSpeedInMhz, "MemoryType", memoryType, "Channel",
         channel, "MemoryController", memoryController, "Slot", slot, "Socket",
         socket, "SparePartNumber", sparePartNumber, "Model", model,
-        "LocationCode", locationCode, "Functional", functional);
+        "LocationCode", locationCode, "Functional", functional, "BuildDate",
+        buildDate);
 
     if (!success)
     {
@@ -625,6 +628,11 @@ inline void assembleDimmProperties(
             *locationCode;
     }
 
+    if (buildDate != nullptr)
+    {
+        time_utils::productionDateReport(asyncResp->res, *buildDate);
+    }
+
     getPersistentMemoryProperties(asyncResp, properties, jsonPtr);
 }
 
@@ -744,7 +752,7 @@ inline void afterGetDimmData(
     bool found = false;
     for (const auto& [objectPath, serviceMap] : subtree)
     {
-        sdbusplus::message::object_path path(objectPath);
+        sdbusplus::object_path path(objectPath);
 
         bool dimmInterface = false;
         bool associationInterface = false;
@@ -804,7 +812,7 @@ inline void afterGetDimmData(
         return;
     }
     // Set @odata only if object is found
-    asyncResp->res.jsonValue["@odata.type"] = "#Memory.v1_11_0.Memory";
+    asyncResp->res.jsonValue["@odata.type"] = "#Memory.v1_23_0.Memory";
     asyncResp->res.jsonValue["@odata.id"] =
         boost::urls::format("/redfish/v1/Systems/{}/Memory/{}",
                             BMCWEB_REDFISH_SYSTEM_URI_NAME, dimmId);
@@ -859,7 +867,7 @@ inline void afterGetValidDimmPath(
     for (const auto& objectPath : subtree)
     {
         // Ignore any objects which don't end with our desired dimm name
-        sdbusplus::message::object_path path(objectPath);
+        sdbusplus::object_path path(objectPath);
         if (path.filename() == dimmId)
         {
             callback(path);

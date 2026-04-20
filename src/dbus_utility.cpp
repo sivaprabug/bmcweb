@@ -7,6 +7,7 @@
 #include "dbus_singleton.hpp"
 #include "logging.hpp"
 
+#include <boost/system/errc.hpp>
 #include <boost/system/error_code.hpp>
 #include <sdbusplus/asio/connection.hpp>
 #include <sdbusplus/asio/property.hpp>
@@ -99,6 +100,16 @@ void getSubTreePaths(
         [callback = std::move(callback)](
             const boost::system::error_code& ec,
             const MapperGetSubTreePathsResponse& subtreePaths) {
+            // Treat io_error (which means no objects found) as success with
+            // empty list, not an error. This is a common case when querying
+            // for objects that may not exist (e.g., no certificates installed).
+            if (ec && ec.value() == boost::system::errc::io_error)
+            {
+                callback(boost::system::errc::make_error_code(
+                             boost::system::errc::success),
+                         MapperGetSubTreePathsResponse{});
+                return;
+            }
             callback(ec, subtreePaths);
         },
         "xyz.openbmc_project.ObjectMapper",
@@ -108,8 +119,8 @@ void getSubTreePaths(
 }
 
 void getAssociatedSubTree(
-    const sdbusplus::message::object_path& associatedPath,
-    const sdbusplus::message::object_path& path, int32_t depth,
+    const sdbusplus::object_path& associatedPath,
+    const sdbusplus::object_path& path, int32_t depth,
     std::span<const std::string_view> interfaces,
     std::function<void(const boost::system::error_code&,
                        const MapperGetSubTreeResponse&)>&& callback)
@@ -125,8 +136,8 @@ void getAssociatedSubTree(
 }
 
 void getAssociatedSubTreePaths(
-    const sdbusplus::message::object_path& associatedPath,
-    const sdbusplus::message::object_path& path, int32_t depth,
+    const sdbusplus::object_path& associatedPath,
+    const sdbusplus::object_path& path, int32_t depth,
     std::span<const std::string_view> interfaces,
     std::function<void(const boost::system::error_code&,
                        const MapperGetSubTreePathsResponse&)>&& callback)
@@ -135,6 +146,16 @@ void getAssociatedSubTreePaths(
         [callback = std::move(callback)](
             const boost::system::error_code& ec,
             const MapperGetSubTreePathsResponse& subtreePaths) {
+            // Treat io_error (which means no objects found) as success with
+            // empty list, not an error. This is a common case when querying
+            // for objects that may not exist.
+            if (ec && ec.value() == boost::system::errc::io_error)
+            {
+                callback(boost::system::errc::make_error_code(
+                             boost::system::errc::success),
+                         MapperGetSubTreePathsResponse{});
+                return;
+            }
             callback(ec, subtreePaths);
         },
         "xyz.openbmc_project.ObjectMapper",
@@ -173,6 +194,16 @@ void getAssociatedSubTreePathsById(
         [callback = std::move(callback)](
             const boost::system::error_code& ec,
             const MapperGetSubTreePathsResponse& subtreePaths) {
+            // Treat io_error (which means no objects found) as success with
+            // empty list, not an error. This is a common case when querying
+            // for objects that may not exist.
+            if (ec && ec.value() == boost::system::errc::io_error)
+            {
+                callback(boost::system::errc::make_error_code(
+                             boost::system::errc::success),
+                         MapperGetSubTreePathsResponse{});
+                return;
+            }
             callback(ec, subtreePaths);
         },
         "xyz.openbmc_project.ObjectMapper",
@@ -207,7 +238,7 @@ void getAssociationEndPoints(
 }
 
 void getManagedObjects(const std::string& service,
-                       const sdbusplus::message::object_path& path,
+                       const sdbusplus::object_path& path,
                        std::function<void(const boost::system::error_code&,
                                           const ManagedObjectType&)>&& callback)
 {
