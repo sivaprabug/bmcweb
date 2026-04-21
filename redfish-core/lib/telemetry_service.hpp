@@ -21,7 +21,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -91,9 +90,9 @@ inline void handleTelemetryServiceGet(
 
             if (minInterval != nullptr)
             {
+                std::chrono::milliseconds minIntervalMs(*minInterval);
                 asyncResp->res.jsonValue["MinCollectionInterval"] =
-                    time_utils::toDurationString(std::chrono::milliseconds(
-                        static_cast<time_t>(*minInterval)));
+                    time_utils::toDurationString(minIntervalMs);
             }
             nlohmann::json::array_t supportedCollectionFunctions;
             supportedCollectionFunctions.emplace_back("Maximum");
