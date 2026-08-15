@@ -250,6 +250,10 @@ inline std::string_view toReadingUnits(std::string_view sensorType)
     {
         return "Ah";
     }
+    if (sensorType == "frequency")
+    {
+        return "Hz";
+    }
     return "";
 }
 
@@ -309,6 +313,10 @@ inline sensor::ReadingType toReadingType(std::string_view sensorType)
     if (sensorType == "pressure")
     {
         return sensor::ReadingType::PressurePa;
+    }
+    if (sensorType == "frequency")
+    {
+        return sensor::ReadingType::Frequency;
     }
     if (sensorType == "charge")
     {
@@ -391,9 +399,10 @@ inline resource::State getState(const InventoryItem* inventoryItem,
  * be nullptr if no associated inventory item was found.
  * @return Health value for sensor.
  */
-inline std::string getHealth(nlohmann::json& sensorJson,
-                             const dbus::utility::DBusPropertiesMap& valuesDict,
-                             const InventoryItem* inventoryItem)
+inline resource::Health getHealth(
+    nlohmann::json& sensorJson,
+    const dbus::utility::DBusPropertiesMap& valuesDict,
+    const InventoryItem* inventoryItem)
 {
     // Get current health value (if any) in the sensor JSON object.  Some JSON
     // objects contain multiple sensors (such as PowerSupplies).  We want to set
@@ -417,7 +426,7 @@ inline std::string getHealth(nlohmann::json& sensorJson,
     // should override the sensor health, which might be less severe.
     if (currentHealth == "Critical")
     {
-        return "Critical";
+        return resource::Health::Critical;
     }
 
     const bool* criticalAlarmHigh = nullptr;
@@ -437,21 +446,21 @@ inline std::string getHealth(nlohmann::json& sensorJson,
         if ((criticalAlarmHigh != nullptr && *criticalAlarmHigh) ||
             (criticalAlarmLow != nullptr && *criticalAlarmLow))
         {
-            return "Critical";
+            return resource::Health::Critical;
         }
     }
 
     // Check if associated inventory item is not functional
     if ((inventoryItem != nullptr) && !(inventoryItem->isFunctional))
     {
-        return "Critical";
+        return resource::Health::Critical;
     }
 
     // If current health in JSON object is already Warning, return that. This
     // should override the sensor status, which might be less severe.
     if (currentHealth == "Warning")
     {
-        return "Warning";
+        return resource::Health::Warning;
     }
 
     if (success)
@@ -460,11 +469,11 @@ inline std::string getHealth(nlohmann::json& sensorJson,
         if ((warningAlarmHigh != nullptr && *warningAlarmHigh) ||
             (warningAlarmLow != nullptr && *warningAlarmLow))
         {
-            return "Warning";
+            return resource::Health::Warning;
         }
     }
 
-    return "OK";
+    return resource::Health::OK;
 }
 
 inline void setLedState(nlohmann::json& sensorJson,
@@ -1144,6 +1153,7 @@ inline void getAllSensorObjects(
 
     dbus::utility::getAssociatedSubTree(
         endpointPath, sdbusplus::object_path(path), depth, interfaces,
+        // ast-grep-ignore: long-lambda
         [callback = std::move(callback)](
             const boost::system::error_code& ec,
             const dbus::utility::MapperGetSubTreeResponse& subtree) {
@@ -1279,6 +1289,7 @@ inline void getSensorsByPurpose(
         dbus::utility::getProperty<std::vector<std::string>>(
             serviceName, sensorPath, "xyz.openbmc_project.Sensor.Purpose",
             "Purpose",
+            // ast-grep-ignore: long-lambda
             [asyncResp, serviceName, sensorPath, sensorPurpose, sensorMatches,
              callback, remainingSensorsToVist,
              asyncErrors](const boost::system::error_code& ec,

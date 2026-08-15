@@ -30,6 +30,7 @@ inline void requestRoutesThermal(App& app)
     BMCWEB_ROUTE(app, "/redfish/v1/Chassis/<str>/Thermal/")
         .privileges(redfish::privileges::getThermal)
         .methods(boost::beast::http::verb::get)(
+            // ast-grep-ignore: long-lambda
             [&app](const crow::Request& req,
                    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
                    const std::string& chassisName) {
@@ -43,13 +44,13 @@ inline void requestRoutesThermal(App& app)
                     sensor_utils::chassisSubNodeToString(
                         sensor_utils::ChassisSubNode::thermalNode));
 
-                // TODO Need to get Chassis Redundancy information.
                 getChassisData(sensorAsyncResp);
             });
 
     BMCWEB_ROUTE(app, "/redfish/v1/Chassis/<str>/Thermal/")
         .privileges(redfish::privileges::patchThermal)
         .methods(boost::beast::http::verb::patch)(
+            // ast-grep-ignore: long-lambda
             [&app](const crow::Request& req,
                    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
                    const std::string& chassisName) {
@@ -83,7 +84,7 @@ inline void requestRoutesThermal(App& app)
                 {
                     messages::resourceNotFound(sensorsAsyncResp->asyncResp->res,
                                                "Thermal",
-                                               "Temperatures / Voltages");
+                                               "Temperatures / Fans");
                     return;
                 }
                 if (temperatureCollections)

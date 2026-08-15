@@ -92,6 +92,7 @@ class Server
     void startAsyncWaitForSignal()
     {
         signals.async_wait(
+            // ast-grep-ignore: long-lambda
             [this](const boost::system::error_code& ec, int signalNo) {
                 if (ec)
                 {
@@ -115,7 +116,7 @@ class Server
 
     using SocketPtr = std::unique_ptr<Adaptor>;
 
-    void afterAccept(SocketPtr socket, HttpType httpType,
+    void afterAccept(Acceptor* acceptor, SocketPtr socket, HttpType httpType,
                      const boost::system::error_code& ec)
     {
         if (ec)
@@ -140,22 +141,22 @@ class Server
 
         boost::asio::post(getIoContext(),
                           [connection] { connection->start(); });
-
-        doAccept();
+        doAcceptOne(*acceptor);
+    }
+    void doAcceptOne(Acceptor& acceptor)
+    {
+        SocketPtr socket = std::make_unique<Adaptor>(getIoContext());
+        Adaptor* socketPtr = socket.get();
+        acceptor.acceptor.async_accept(
+            *socketPtr, std::bind_front(&self_t::afterAccept, this, &acceptor,
+                                        std::move(socket), acceptor.httpType));
     }
 
     void doAccept()
     {
-        SocketPtr socket = std::make_unique<Adaptor>(getIoContext());
-        // Keep a raw pointer so when the socket is moved, the pointer is still
-        // valid
-        Adaptor* socketPtr = socket.get();
         for (Acceptor& accept : acceptors)
         {
-            accept.acceptor.async_accept(
-                *socketPtr,
-                std::bind_front(&self_t::afterAccept, this, std::move(socket),
-                                accept.httpType));
+            doAcceptOne(accept);
         }
     }
 

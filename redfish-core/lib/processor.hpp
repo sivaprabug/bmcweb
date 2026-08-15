@@ -19,6 +19,7 @@
 #include "utils/collection.hpp"
 #include "utils/dbus_utils.hpp"
 #include "utils/json_utils.hpp"
+#include "utils/processor_utils.hpp"
 
 #include <boost/beast/http/field.hpp>
 #include <boost/beast/http/verb.hpp>
@@ -49,11 +50,6 @@
 
 namespace redfish
 {
-
-// Interfaces which imply a D-Bus object represents a Processor
-constexpr std::array<std::string_view, 2> processorInterfaces = {
-    "xyz.openbmc_project.Inventory.Item.Cpu",
-    "xyz.openbmc_project.Inventory.Item.Accelerator"};
 
 /**
  * @brief Fill out uuid info of a processor by
@@ -504,19 +500,19 @@ inline void afterGetAcceleratorDataByService(
         return;
     }
 
-    std::string state = "Enabled";
-    std::string health = "OK";
+    resource::State state = resource::State::Enabled;
+    resource::Health health = resource::Health::OK;
 
     if (present != nullptr && !*present)
     {
-        state = "Absent";
+        state = resource::State::Absent;
     }
 
     if (functional != nullptr && !*functional)
     {
-        if (state == "Enabled")
+        if (state == resource::State::Enabled)
         {
-            health = "Critical";
+            health = resource::Health::Critical;
         }
     }
 
@@ -526,6 +522,85 @@ inline void afterGetAcceleratorDataByService(
     asyncResp->res.jsonValue["Status"]["Health"] = health;
     asyncResp->res.jsonValue["ProcessorType"] =
         processor::ProcessorType::Accelerator;
+}
+
+inline void afterGetProcessorFirmwareVersion(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const boost::system::error_code& ec, const std::string& version)
+{
+    if (ec)
+    {
+        if (ec.value() == EBADR)
+        {
+            // Software.Version not present on this object
+            BMCWEB_LOG_DEBUG("No Version property to report");
+            return;
+        }
+        BMCWEB_LOG_ERROR("DBUS response error {}", ec.message());
+        messages::internalError(asyncResp->res);
+        return;
+    }
+    if (version.empty())
+    {
+        return;
+    }
+    asyncResp->res.jsonValue["FirmwareVersion"] = version;
+}
+
+inline void afterGetProcessorFirmwareVersionSubTree(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const boost::system::error_code& ec,
+    const dbus::utility::MapperGetSubTreeResponse& subtree)
+{
+    if (ec)
+    {
+        if (ec.value() == EBADR)
+        {
+            // No "ran_on" association — processor has no firmware to report
+            BMCWEB_LOG_DEBUG("No firmware association for processor");
+            return;
+        }
+        BMCWEB_LOG_ERROR("DBUS response error {}", ec.message());
+        messages::internalError(asyncResp->res);
+        return;
+    }
+    if (subtree.empty())
+    {
+        // Association resolves to no Software.Version object
+        return;
+    }
+    if (subtree.size() > 1)
+    {
+        BMCWEB_LOG_ERROR("Processor maps to more than one firmware object");
+        messages::internalError(asyncResp->res);
+        return;
+    }
+    const auto& [softwarePath, serviceMap] = subtree.front();
+    if (serviceMap.empty())
+    {
+        BMCWEB_LOG_ERROR("No service owns {}", softwarePath);
+        messages::internalError(asyncResp->res);
+        return;
+    }
+    const std::string& service = serviceMap.front().first;
+    dbus::utility::getProperty<std::string>(
+        service, softwarePath, "xyz.openbmc_project.Software.Version",
+        "Version",
+        std::bind_front(afterGetProcessorFirmwareVersion, asyncResp));
+}
+
+inline void getProcessorFirmwareVersion(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const std::string& processorPath)
+{
+    BMCWEB_LOG_DEBUG("Get Processor Firmware Version");
+    constexpr std::array<std::string_view, 1> softwareIfaces = {
+        "xyz.openbmc_project.Software.Version"};
+    dbus::utility::getAssociatedSubTree(
+        sdbusplus::object_path(processorPath) / "ran_on",
+        sdbusplus::object_path("/xyz/openbmc_project/software"), 0,
+        softwareIfaces,
+        std::bind_front(afterGetProcessorFirmwareVersionSubTree, asyncResp));
 }
 
 inline void getAcceleratorDataByService(
@@ -651,6 +726,7 @@ inline void afterGetCpuConfigData(
             "xyz.openbmc_project.Inventory.Item.Cpu."
             "OperatingConfig",
             "BaseSpeedPrioritySettings",
+            // ast-grep-ignore: long-lambda
             [asyncResp](
                 const boost::system::error_code& ec2,
                 const BaseSpeedPrioritySettingsProperty& baseSpeedList) {
@@ -745,6 +821,7 @@ inline void getCpuUniqueId(const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
         service, objectPath,
         "xyz.openbmc_project.Inventory.Decorator.UniqueIdentifier",
         "UniqueIdentifier",
+        // ast-grep-ignore: long-lambda
         [asyncResp](const boost::system::error_code& ec,
                     const std::string& id) {
             if (ec)
@@ -756,6 +833,53 @@ inline void getCpuUniqueId(const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
             asyncResp->res
                 .jsonValue["ProcessorId"]["ProtectedIdentificationNumber"] = id;
         });
+}
+
+inline void afterGetAssociatedSubTreeForEnvMetricsLink(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const std::string& processorId, const boost::system::error_code& ec,
+    const dbus::utility::MapperGetSubTreeResponse& subtree)
+{
+    if (ec)
+    {
+        if (ec.value() == EBADR)
+        {
+            BMCWEB_LOG_DEBUG("No controlled_by association for processor");
+            return;
+        }
+        BMCWEB_LOG_ERROR("DBUS response error for getAssociatedSubTree: {}",
+                         ec);
+        return;
+    }
+
+    if (subtree.empty())
+    {
+        BMCWEB_LOG_DEBUG("No Power.Cap control found for processor");
+        return;
+    }
+
+    asyncResp->res.jsonValue["EnvironmentMetrics"]["@odata.id"] =
+        boost::urls::format(
+            "/redfish/v1/Systems/{}/Processors/{}/EnvironmentMetrics",
+            BMCWEB_REDFISH_SYSTEM_URI_NAME, processorId);
+}
+
+inline void getEnvironmentMetricsLink(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const std::string& processorId, const std::string& objectPath)
+{
+    BMCWEB_LOG_DEBUG("getEnvironmentMetricsLink: {}", objectPath);
+
+    sdbusplus::object_path associationPath(objectPath);
+    associationPath /= "controlled_by";
+    constexpr std::array<std::string_view, 1> powerCapInterface = {
+        "xyz.openbmc_project.Control.Power.Cap"};
+
+    dbus::utility::getAssociatedSubTree(
+        associationPath, sdbusplus::object_path("/xyz/openbmc_project/control"),
+        0, powerCapInterface,
+        std::bind_front(afterGetAssociatedSubTreeForEnvMetricsLink, asyncResp,
+                        processorId));
 }
 
 inline void handleProcessorSubtree(
@@ -854,6 +978,10 @@ inline void getProcessorData(
     asyncResp->res.jsonValue["@odata.id"] =
         boost::urls::format("/redfish/v1/Systems/{}/Processors/{}",
                             BMCWEB_REDFISH_SYSTEM_URI_NAME, processorId);
+    asyncResp->res.jsonValue["SubProcessors"]["@odata.id"] =
+        boost::urls::format(
+            "/redfish/v1/Systems/{}/Processors/{}/SubProcessors",
+            BMCWEB_REDFISH_SYSTEM_URI_NAME, processorId);
 
     for (const auto& [serviceName, interfaceList] : serviceMap)
     {
@@ -907,6 +1035,8 @@ inline void getProcessorData(
             else if (interface == "xyz.openbmc_project.Association.Definitions")
             {
                 getLocationIndicatorActive(asyncResp, objectPath);
+                getEnvironmentMetricsLink(asyncResp, processorId, objectPath);
+                getProcessorFirmwareVersion(asyncResp, objectPath);
             }
         }
     }

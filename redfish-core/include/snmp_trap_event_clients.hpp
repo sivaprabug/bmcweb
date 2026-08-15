@@ -97,6 +97,7 @@ inline void getSnmpTrapClient(
 {
     dbus::utility::async_method_call(
         asyncResp,
+        // ast-grep-ignore: long-lambda
         [asyncResp, id](const boost::system::error_code& ec,
                         dbus::utility::ManagedObjectType& resp) {
             if (ec)
@@ -145,6 +146,16 @@ inline void afterSnmpClientCreate(
         const sd_bus_error* dbusError = msg.get_error();
         if (dbusError != nullptr)
         {
+            if (std::string_view(
+                    "xyz.openbmc_project.Common.ObjectAlreadyExists") ==
+                dbusError->name)
+            {
+                BMCWEB_LOG_WARNING(
+                    "SNMP client already exists for destination {}", host);
+                messages::resourceAlreadyExists(
+                    asyncResp->res, "EventDestination", "Destination", host);
+                return;
+            }
             if (std::string_view(
                     "xyz.openbmc_project.Common.Error.InvalidArgument") ==
                 dbusError->name)
@@ -211,6 +222,27 @@ inline void getSnmpSubscriptionList(
     asyncResp->res.jsonValue["Members@odata.count"] = memberArray.size();
 }
 
+inline void handleDeleteSnmpTrapClientResponse(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const std::string& param, const boost::system::error_code& ec)
+{
+    if (ec)
+    {
+        if (ec.value() == EBADR)
+        {
+            BMCWEB_LOG_WARNING("Invalid SNMP trap client id: {}", param);
+            messages::resourceNotFound(asyncResp->res, "Subscription", param);
+            return;
+        }
+
+        BMCWEB_LOG_ERROR("DBUS response error: {}", ec);
+        messages::internalError(asyncResp->res);
+        return;
+    }
+
+    messages::success(asyncResp->res);
+}
+
 inline void deleteSnmpTrapClient(
     const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
     const std::string& param)
@@ -229,19 +261,7 @@ inline void deleteSnmpTrapClient(
     dbus::utility::async_method_call(
         asyncResp,
         [asyncResp, param](const boost::system::error_code& ec) {
-            if (ec)
-            {
-                // The snmp trap id is incorrect
-                if (ec.value() == EBADR)
-                {
-                    messages::resourceNotFound(asyncResp->res, "Subscription",
-                                               param);
-                    return;
-                }
-                messages::internalError(asyncResp->res);
-                return;
-            }
-            messages::success(asyncResp->res);
+            handleDeleteSnmpTrapClientResponse(asyncResp, param, ec);
         },
         "xyz.openbmc_project.Network.SNMP", static_cast<std::string>(snmpPath),
         "xyz.openbmc_project.Object.Delete", "Delete");
