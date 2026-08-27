@@ -12,7 +12,6 @@
 #include "error_messages.hpp"
 #include "generated/enums/log_entry.hpp"
 #include "generated/enums/log_service.hpp"
-#include "http_body.hpp"
 #include "http_request.hpp"
 #include "http_response.hpp"
 #include "human_sort.hpp"
@@ -30,12 +29,10 @@
 #include "utils/time_utils.hpp"
 
 #include <asm-generic/errno.h>
-#include <systemd/sd-bus.h>
+#include <systemd/sd-bus-protocol.h>
 #include <tinyxml2.h>
-#include <unistd.h>
 
 #include <boost/beast/http/field.hpp>
-#include <boost/beast/http/status.hpp>
 #include <boost/beast/http/verb.hpp>
 #include <boost/system/linux_error.hpp>
 #include <boost/url/format.hpp>
@@ -287,7 +284,7 @@ inline void getDumpEntryCollection(
 
             for (auto& object : resp)
             {
-                if (object.first.str.find(dumpEntryPath) == std::string::npos)
+                if (!object.first.str.contains(dumpEntryPath))
                 {
                     continue;
                 }
@@ -321,7 +318,7 @@ inline void getDumpEntryCollection(
                 thisEntry["@odata.id"] =
                     boost::urls::format("{}/{}", entriesPath, entryID);
                 thisEntry["Id"] = entryID;
-                thisEntry["EntryType"] = "Event";
+                thisEntry["EntryType"] = log_entry::LogEntryType::Event;
                 thisEntry["Name"] = dumpType + " Dump Entry";
                 thisEntry["Created"] =
                     redfish::time_utils::getDateTimeUintUs(timestampUs);
@@ -334,14 +331,16 @@ inline void getDumpEntryCollection(
 
                 if (dumpType == "BMC")
                 {
-                    thisEntry["DiagnosticDataType"] = "Manager";
+                    thisEntry["DiagnosticDataType"] =
+                        log_entry::LogDiagnosticDataTypes::Manager;
                     thisEntry["AdditionalDataURI"] = boost::urls::format(
                         "{}/{}/attachment", entriesPath, entryID);
                     thisEntry["AdditionalDataSizeBytes"] = size;
                 }
                 else if (dumpType == "System")
                 {
-                    thisEntry["DiagnosticDataType"] = "OEM";
+                    thisEntry["DiagnosticDataType"] =
+                        log_entry::LogDiagnosticDataTypes::OEM;
                     thisEntry["OEMDiagnosticDataType"] = "System";
                     thisEntry["AdditionalDataURI"] = boost::urls::format(
                         "{}/{}/attachment", entriesPath, entryID);
@@ -418,7 +417,8 @@ inline void getDumpEntryById(
                 asyncResp->res.jsonValue["@odata.id"] =
                     boost::urls::format("{}/{}", entriesPath, entryID);
                 asyncResp->res.jsonValue["Id"] = entryID;
-                asyncResp->res.jsonValue["EntryType"] = "Event";
+                asyncResp->res.jsonValue["EntryType"] =
+                    log_entry::LogEntryType::Event;
                 asyncResp->res.jsonValue["Name"] = dumpType + " Dump Entry";
                 asyncResp->res.jsonValue["Created"] =
                     redfish::time_utils::getDateTimeUintUs(timestampUs);
@@ -431,7 +431,8 @@ inline void getDumpEntryById(
 
                 if (dumpType == "BMC")
                 {
-                    asyncResp->res.jsonValue["DiagnosticDataType"] = "Manager";
+                    asyncResp->res.jsonValue["DiagnosticDataType"] =
+                        log_entry::LogDiagnosticDataTypes::Manager;
                     asyncResp->res.jsonValue["AdditionalDataURI"] =
                         boost::urls::format("{}/{}/attachment", entriesPath,
                                             entryID);
@@ -439,7 +440,8 @@ inline void getDumpEntryById(
                 }
                 else if (dumpType == "System")
                 {
-                    asyncResp->res.jsonValue["DiagnosticDataType"] = "OEM";
+                    asyncResp->res.jsonValue["DiagnosticDataType"] =
+                        log_entry::LogDiagnosticDataTypes::OEM;
                     asyncResp->res.jsonValue["OEMDiagnosticDataType"] =
                         "System";
                     asyncResp->res.jsonValue["AdditionalDataURI"] =
@@ -959,7 +961,7 @@ inline void handleSystemsLogServiceCollectionGet(
 
             for (const auto& pathStr : subtreePath)
             {
-                if (pathStr.find("PostCode") != std::string::npos)
+                if (pathStr.contains("PostCode"))
                 {
                     nlohmann::json& logServiceArrayLocal =
                         asyncResp->res.jsonValue["Members"];
