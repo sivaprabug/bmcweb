@@ -675,8 +675,8 @@ inline bool getChassisSensorNodeFromMetrics(
         if (error)
         {
             messages::propertyValueIncorrect(
-                asyncResp->res, error->uri,
-                "MetricProperties/" + std::to_string(error->index));
+                asyncResp->res,
+                "MetricProperties/" + std::to_string(error->index), error->uri);
             return false;
         }
     }
@@ -1262,8 +1262,9 @@ inline void setReportMetrics(
                 if (error)
                 {
                     messages::propertyValueIncorrect(
-                        asyncResp->res, error->uri,
-                        "MetricProperties/" + std::to_string(error->index));
+                        asyncResp->res,
+                        "MetricProperties/" + std::to_string(error->index),
+                        error->uri);
                     return;
                 }
 
@@ -1543,7 +1544,7 @@ inline void requestRoutesMetricReportDefinition(App& app)
 {
     BMCWEB_ROUTE(app,
                  "/redfish/v1/TelemetryService/MetricReportDefinitions/<str>/")
-        .privileges(redfish::privileges::getMetricReportDefinition)
+        .privileges(redfish::privileges::headMetricReportDefinition)
         .methods(boost::beast::http::verb::head)(
             std::bind_front(handleMetricReportHead, std::ref(app)));
 

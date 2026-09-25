@@ -24,6 +24,7 @@
 #include "log_services.hpp"
 #include "manager_diagnostic_data.hpp"
 #include "manager_logservices_dbus_eventlog.hpp"
+#include "manager_logservices_dump.hpp"
 #include "manager_logservices_journal.hpp"
 #include "manager_logservices_journal_eventlog.hpp"
 #include "managers.hpp"
@@ -54,6 +55,7 @@
 #include "switch_port.hpp"
 #include "systems.hpp"
 #include "systems_logservices_dbus_eventlog.hpp"
+#include "systems_logservices_dump.hpp"
 #include "systems_logservices_hostlogger.hpp"
 #include "systems_logservices_journal_eventlog.hpp"
 #include "systems_logservices_postcodes.hpp"
@@ -154,24 +156,9 @@ RedfishService::RedfishService(App& app)
 
     if constexpr (BMCWEB_REDFISH_DUMP_LOG)
     {
-        requestRoutesSystemDumpService(app);
-        requestRoutesSystemDumpEntryCollection(app);
-        requestRoutesSystemDumpEntry(app);
-        requestRoutesSystemDumpEntryDownload(app);
-        requestRoutesSystemDumpCreate(app);
-        requestRoutesSystemDumpClear(app);
+        requestRoutesSystemsLogServicesDump(app);
 
-        requestRoutesBMCDumpService(app);
-        requestRoutesBMCDumpEntryCollection(app);
-        requestRoutesBMCDumpEntry(app);
-        requestRoutesBMCDumpEntryDownload(app);
-        requestRoutesBMCDumpCreate(app);
-        requestRoutesBMCDumpClear(app);
-
-        requestRoutesFaultLogDumpService(app);
-        requestRoutesFaultLogDumpEntryCollection(app);
-        requestRoutesFaultLogDumpEntry(app);
-        requestRoutesFaultLogDumpClear(app);
+        requestRoutesManagersLogServicesDumpAndFaultLog(app);
     }
 
     if constexpr (BMCWEB_REDFISH_BMC_JOURNAL)

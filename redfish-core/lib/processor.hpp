@@ -20,6 +20,7 @@
 #include "utils/dbus_utils.hpp"
 #include "utils/json_utils.hpp"
 #include "utils/processor_utils.hpp"
+#include "utils/resource_utils.hpp"
 
 #include <boost/beast/http/field.hpp>
 #include <boost/beast/http/verb.hpp>
@@ -84,9 +85,10 @@ inline void getCpuDataByInterface(
 {
     BMCWEB_LOG_DEBUG("Get CPU resources by interface.");
 
-    // Set the default value of state
-    asyncResp->res.jsonValue["Status"]["State"] = resource::State::Enabled;
-    asyncResp->res.jsonValue["Status"]["Health"] = resource::Health::OK;
+    // Set the default value of state and health
+    bool present = true;
+    bool available = true;
+    bool functional = true;
 
     for (const auto& interface : cpuInterfacesProperties)
     {
@@ -101,12 +103,17 @@ inline void getCpuDataByInterface(
                     messages::internalError(asyncResp->res);
                     return;
                 }
-                if (!*cpuPresent)
+                present = *cpuPresent;
+            }
+            else if (property.first == "Available")
+            {
+                const bool* cpuAvailable = std::get_if<bool>(&property.second);
+                if (cpuAvailable == nullptr)
                 {
-                    // Slot is not populated
-                    asyncResp->res.jsonValue["Status"]["State"] =
-                        resource::State::Absent;
+                    messages::internalError(asyncResp->res);
+                    return;
                 }
+                available = *cpuAvailable;
             }
             else if (property.first == "Functional")
             {
@@ -116,11 +123,7 @@ inline void getCpuDataByInterface(
                     messages::internalError(asyncResp->res);
                     return;
                 }
-                if (!*cpuFunctional)
-                {
-                    asyncResp->res.jsonValue["Status"]["Health"] =
-                        resource::Health::Critical;
-                }
+                functional = *cpuFunctional;
             }
             else if (property.first == "CoreCount")
             {
@@ -222,6 +225,10 @@ inline void getCpuDataByInterface(
             }
         }
     }
+    resource_utils::determineResourceState(asyncResp, present, available,
+                                           ""_json_pointer);
+    resource_utils::determineResourceHealth(asyncResp, ""_json_pointer,
+                                            functional);
 }
 
 inline void afterGetCpuDataByService(
@@ -400,18 +407,24 @@ inline void afterGetCpuAssetData(
         // Otherwise would be unexpected.
         if (manufacturer->contains("Intel"))
         {
-            asyncResp->res.jsonValue["ProcessorArchitecture"] = "x86";
-            asyncResp->res.jsonValue["InstructionSet"] = "x86-64";
+            asyncResp->res.jsonValue["ProcessorArchitecture"] =
+                processor::ProcessorArchitecture::x86;
+            asyncResp->res.jsonValue["InstructionSet"] =
+                processor::InstructionSet::x8664;
         }
         else if (manufacturer->contains("IBM"))
         {
-            asyncResp->res.jsonValue["ProcessorArchitecture"] = "Power";
-            asyncResp->res.jsonValue["InstructionSet"] = "PowerISA";
+            asyncResp->res.jsonValue["ProcessorArchitecture"] =
+                processor::ProcessorArchitecture::Power;
+            asyncResp->res.jsonValue["InstructionSet"] =
+                processor::InstructionSet::PowerISA;
         }
         else if (manufacturer->contains("Ampere"))
         {
-            asyncResp->res.jsonValue["ProcessorArchitecture"] = "ARM";
-            asyncResp->res.jsonValue["InstructionSet"] = "ARM-A64";
+            asyncResp->res.jsonValue["ProcessorArchitecture"] =
+                processor::ProcessorArchitecture::ARM;
+            asyncResp->res.jsonValue["InstructionSet"] =
+                processor::InstructionSet::ARMA64;
         }
     }
 
@@ -473,55 +486,6 @@ inline void getCpuRevisionData(
     dbus::utility::getAllProperties(
         service, objPath, "xyz.openbmc_project.Inventory.Decorator.Revision",
         std::bind_front(afterGetCpuRevisionData, asyncResp));
-}
-
-inline void afterGetAcceleratorDataByService(
-    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
-    const std::string& acceleratorId, const boost::system::error_code& ec,
-    const dbus::utility::DBusPropertiesMap& properties)
-{
-    if (ec)
-    {
-        BMCWEB_LOG_DEBUG("DBUS response error");
-        messages::internalError(asyncResp->res);
-        return;
-    }
-
-    const bool* functional = nullptr;
-    const bool* present = nullptr;
-
-    const bool success = sdbusplus::unpackPropertiesNoThrow(
-        dbus_utils::UnpackErrorPrinter(), properties, "Functional", functional,
-        "Present", present);
-
-    if (!success)
-    {
-        messages::internalError(asyncResp->res);
-        return;
-    }
-
-    resource::State state = resource::State::Enabled;
-    resource::Health health = resource::Health::OK;
-
-    if (present != nullptr && !*present)
-    {
-        state = resource::State::Absent;
-    }
-
-    if (functional != nullptr && !*functional)
-    {
-        if (state == resource::State::Enabled)
-        {
-            health = resource::Health::Critical;
-        }
-    }
-
-    asyncResp->res.jsonValue["Id"] = acceleratorId;
-    asyncResp->res.jsonValue["Name"] = "Processor";
-    asyncResp->res.jsonValue["Status"]["State"] = state;
-    asyncResp->res.jsonValue["Status"]["Health"] = health;
-    asyncResp->res.jsonValue["ProcessorType"] =
-        processor::ProcessorType::Accelerator;
 }
 
 inline void afterGetProcessorFirmwareVersion(
@@ -609,10 +573,14 @@ inline void getAcceleratorDataByService(
     const std::string& objPath)
 {
     BMCWEB_LOG_DEBUG("Get available system Accelerator resources by service.");
-    dbus::utility::getAllProperties(
-        service, objPath, "",
-        std::bind_front(afterGetAcceleratorDataByService, asyncResp,
-                        acceleratorId));
+    resource_utils::getResourceState(asyncResp, service, objPath,
+                                     ""_json_pointer);
+    resource_utils::getResourceHealth(asyncResp, service, objPath,
+                                      ""_json_pointer);
+    asyncResp->res.jsonValue["Id"] = acceleratorId;
+    asyncResp->res.jsonValue["Name"] = "Processor";
+    asyncResp->res.jsonValue["ProcessorType"] =
+        processor::ProcessorType::Accelerator;
 }
 
 // OperatingConfig D-Bus Types
@@ -1224,7 +1192,7 @@ inline void handleProcessorPatch(
         if (!parsed)
         {
             messages::propertyValueFormatError(
-                asyncResp->res, "AppliedOperatingConfig", *appliedConfigStr);
+                asyncResp->res, *appliedConfigStr, "AppliedOperatingConfig");
             return;
         }
         appliedConfigUri = std::move(*parsed);

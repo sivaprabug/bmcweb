@@ -199,6 +199,8 @@ Fields common to all schemas
 - PartNumber
 - SerialNumber
 - Status
+  - Health
+  - State
 
 ### /redfish/v1/CertificateService/
 
@@ -1123,6 +1125,7 @@ functions the same like the default implementation under the System resource.
   - SlotType
 - SparePartNumber
 - Status
+- UUID
 
 ### /redfish/v1/Systems/system/Processors/
 
@@ -1186,6 +1189,7 @@ functions the same like the default implementation under the System resource.
 - Id
 - Name
 - ProcessorType
+- Status
 
 ### /redfish/v1/Systems/system/ResetActionInfo/
 
@@ -1367,6 +1371,7 @@ functions the same like the default implementation under the System resource.
 - Id
 - Name
 - Ports
+- PowerState
 - Status
   - Health
   - State

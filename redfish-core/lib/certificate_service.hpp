@@ -746,8 +746,8 @@ inline void handleGenerateCSRAction(
     // value
     if (!optChallengePassword->empty())
     {
-        messages::actionParameterNotSupported(asyncResp->res, "GenerateCSR",
-                                              "ChallengePassword");
+        messages::actionParameterNotSupported(
+            asyncResp->res, "ChallengePassword", "GenerateCSR");
         return;
     }
 
@@ -1339,7 +1339,7 @@ inline void handleTrustStoreCertificateDelete(
 inline void requestRoutesTrustStoreCertificate(App& app)
 {
     BMCWEB_ROUTE(app, "/redfish/v1/Managers/<str>/Truststore/Certificates/")
-        .privileges(redfish::privileges::getCertificate)
+        .privileges(redfish::privileges::getCertificateCollection)
         .methods(boost::beast::http::verb::get)(std::bind_front(
             handleTrustStoreCertificateCollectionGet, std::ref(app)));
 

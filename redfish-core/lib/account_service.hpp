@@ -418,7 +418,7 @@ inline void handleRoleMapPatch(
             {
                 BMCWEB_LOG_ERROR("Can't delete the object");
                 messages::propertyValueTypeError(
-                    asyncResp->res, "null",
+                    asyncResp->res, nullptr,
                     "RemoteRoleMapping/" + std::to_string(index));
                 return;
             }
@@ -1231,7 +1231,8 @@ inline void afterVerifyUserExists(
         std::string priv = getPrivilegeFromRoleId(*params.roleId);
         if (priv.empty())
         {
-            messages::propertyValueNotInList(asyncResp->res, true, "Locked");
+            messages::propertyValueNotInList(asyncResp->res, *params.roleId,
+                                             "RoleId");
             return;
         }
         setDbusProperty(asyncResp, "RoleId", "xyz.openbmc_project.User.Manager",
@@ -1247,7 +1248,8 @@ inline void afterVerifyUserExists(
         // not be allowed to lock an account.
         if (*params.locked)
         {
-            messages::propertyValueNotInList(asyncResp->res, "true", "Locked");
+            messages::propertyValueNotInList(asyncResp->res, *params.locked,
+                                             "Locked");
             return;
         }
         setDbusProperty(asyncResp, "Locked", "xyz.openbmc_project.User.Manager",
