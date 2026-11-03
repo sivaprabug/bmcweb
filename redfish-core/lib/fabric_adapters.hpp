@@ -18,6 +18,7 @@
 #include "utils/collection.hpp"
 #include "utils/dbus_utils.hpp"
 #include "utils/json_utils.hpp"
+#include "utils/name_utils.hpp"
 #include "utils/resource_utils.hpp"
 
 #include <asm-generic/errno.h>
@@ -39,6 +40,24 @@
 namespace redfish
 {
 
+inline void afterGetFabricAdapterLocation(
+    const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
+    const boost::system::error_code& ec, const std::string& property)
+{
+    if (ec)
+    {
+        if (ec.value() != EBADR)
+        {
+            BMCWEB_LOG_ERROR("DBUS response error for Location");
+            messages::internalError(asyncResp->res);
+        }
+        return;
+    }
+
+    asyncResp->res.jsonValue["Location"]["PartLocation"]["ServiceLabel"] =
+        property;
+}
+
 inline void getFabricAdapterLocation(
     const std::shared_ptr<bmcweb::AsyncResp>& asyncResp,
     const std::string& serviceName, const std::string& fabricAdapterPath)
@@ -46,23 +65,7 @@ inline void getFabricAdapterLocation(
     dbus::utility::getProperty<std::string>(
         serviceName, fabricAdapterPath,
         "xyz.openbmc_project.Inventory.Decorator.LocationCode", "LocationCode",
-        // ast-grep-ignore: long-lambda
-        [asyncResp](const boost::system::error_code& ec,
-                    const std::string& property) {
-            if (ec)
-            {
-                if (ec.value() != EBADR)
-                {
-                    BMCWEB_LOG_ERROR("DBUS response error for Location");
-                    messages::internalError(asyncResp->res);
-                }
-                return;
-            }
-
-            asyncResp->res
-                .jsonValue["Location"]["PartLocation"]["ServiceLabel"] =
-                property;
-        });
+        std::bind_front(afterGetFabricAdapterLocation, asyncResp));
 }
 
 inline void doAdapterGet(
@@ -75,7 +78,8 @@ inline void doAdapterGet(
         "</redfish/v1/JsonSchemas/FabricAdapter/FabricAdapter.json>; rel=describedby");
     asyncResp->res.jsonValue["@odata.type"] =
         "#FabricAdapter.v1_4_0.FabricAdapter";
-    asyncResp->res.jsonValue["Name"] = "Fabric Adapter";
+    name_utils::getPrettyName(asyncResp, serviceName, fabricAdapterPath,
+                              "Fabric Adapter");
     asyncResp->res.jsonValue["Id"] = adapterId;
     asyncResp->res.jsonValue["@odata.id"] = boost::urls::format(
         "/redfish/v1/Systems/{}/FabricAdapters/{}", systemName, adapterId);

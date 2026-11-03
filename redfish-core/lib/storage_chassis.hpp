@@ -13,6 +13,7 @@
 #include "query.hpp"
 #include "redfish_util.hpp"
 #include "registries/privilege_registry.hpp"
+#include "utils/name_utils.hpp"
 
 namespace redfish
 {
@@ -78,6 +79,10 @@ inline std::optional<drive::MediaType> convertDriveType(std::string_view type)
     {
         return drive::MediaType::SSD;
     }
+    if (type == "xyz.openbmc_project.Inventory.Item.Drive.DriveType.SMR")
+    {
+        return drive::MediaType::SMR;
+    }
     if (type == "xyz.openbmc_project.Inventory.Item.Drive.DriveType.Unknown")
     {
         return std::nullopt;
@@ -104,6 +109,10 @@ inline std::optional<protocol::Protocol> convertDriveProtocol(
     if (proto == "xyz.openbmc_project.Inventory.Item.Drive.DriveProtocol.FC")
     {
         return protocol::Protocol::FC;
+    }
+    if (proto == "xyz.openbmc_project.Inventory.Item.Drive.DriveProtocol.eMMC")
+    {
+        return protocol::Protocol::eMMC;
     }
     if (proto ==
         "xyz.openbmc_project.Inventory.Item.Drive.DriveProtocol.Unknown")
@@ -339,7 +348,6 @@ inline void afterGetSubtreeSystemsStorageDrive(
     asyncResp->res.jsonValue["@odata.id"] =
         boost::urls::format("/redfish/v1/Systems/{}/Storage/1/Drives/{}",
                             BMCWEB_REDFISH_SYSTEM_URI_NAME, driveId);
-    asyncResp->res.jsonValue["Name"] = driveId;
     asyncResp->res.jsonValue["Id"] = driveId;
 
     if (connectionNames.size() != 1)
@@ -349,6 +357,8 @@ inline void afterGetSubtreeSystemsStorageDrive(
         messages::internalError(asyncResp->res);
         return;
     }
+
+    name_utils::getPrettyName(asyncResp, connectionNames, path, driveId);
 
     getMainChassisId(
         asyncResp, [](const std::string& chassisId,

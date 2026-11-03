@@ -20,6 +20,7 @@
 #include "utils/dbus_utils.hpp"
 #include "utils/hex_utils.hpp"
 #include "utils/json_utils.hpp"
+#include "utils/name_utils.hpp"
 #include "utils/time_utils.hpp"
 
 #include <asm-generic/errno.h>
@@ -410,7 +411,6 @@ inline void assembleDimmProperties(
     const nlohmann::json::json_pointer& jsonPtr)
 {
     asyncResp->res.jsonValue[jsonPtr]["Id"] = dimmId;
-    asyncResp->res.jsonValue[jsonPtr]["Name"] = "DIMM Slot";
     asyncResp->res.jsonValue[jsonPtr]["Status"]["State"] =
         resource::State::Enabled;
     asyncResp->res.jsonValue[jsonPtr]["Status"]["Health"] =
@@ -583,7 +583,7 @@ inline void assembleDimmProperties(
             asyncResp->res.jsonValue[jsonPtr]["MemoryDeviceType"] =
                 memoryDeviceType;
         }
-        if (memoryType->find("DDR") != std::string::npos)
+        if (memoryType->contains("DDR"))
         {
             asyncResp->res.jsonValue[jsonPtr]["MemoryType"] =
                 memory::MemoryType::DRAM;
@@ -663,6 +663,7 @@ inline void getDimmDataByService(
     const std::string& service, const std::string& objPath)
 {
     BMCWEB_LOG_DEBUG("Get available system components.");
+    name_utils::getPrettyName(asyncResp, service, objPath, "DIMM Slot");
     dbus::utility::getAllProperties(
         service, objPath, "",
         std::bind_front(afterGetDimmDataByService, dimmId,

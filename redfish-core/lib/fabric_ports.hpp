@@ -17,6 +17,7 @@
 #include "query.hpp"
 #include "registries/privilege_registry.hpp"
 #include "utils/json_utils.hpp"
+#include "utils/name_utils.hpp"
 #include "utils/resource_utils.hpp"
 
 #include <asm-generic/errno.h>
@@ -94,7 +95,7 @@ inline void getFabricPortProperties(
         boost::urls::format("/redfish/v1/Systems/{}/FabricAdapters/{}/Ports/{}",
                             systemName, adapterId, portId);
     asyncResp->res.jsonValue["Id"] = portId;
-    asyncResp->res.jsonValue["Name"] = "Fabric Port";
+    name_utils::getPrettyName(asyncResp, serviceName, portPath, "Fabric Port");
 
     getFabricPortLocation(asyncResp, portPath, serviceName);
     resource_utils::getResourceState(asyncResp, serviceName, portPath,
@@ -248,7 +249,7 @@ inline void afterHandleFabricPortCollectionHead(
             return;
         }
         BMCWEB_LOG_WARNING("Adapter not found");
-        messages::resourceNotFound(asyncResp->res, "Adapter", adapterId);
+        messages::resourceNotFound(asyncResp->res, "FabricAdapter", adapterId);
         return;
     }
     asyncResp->res.addHeader(
@@ -301,7 +302,7 @@ inline void doHandleFabricPortCollectionGet(
             return;
         }
         BMCWEB_LOG_WARNING("Adapter not found");
-        messages::resourceNotFound(asyncResp->res, "Adapter", adapterId);
+        messages::resourceNotFound(asyncResp->res, "FabricAdapter", adapterId);
         return;
     }
     asyncResp->res.addHeader(
